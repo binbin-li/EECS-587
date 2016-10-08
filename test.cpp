@@ -47,7 +47,10 @@ int main(int argc, char** argv) {
     for (int j = 0; j < right - left + 3; ++j) {
       localArray[i][j] = 0;
     }
-    memcpy(prevArray[i], localArray[i], sizeof(double) * (right - left + 3));
+    // memcpy(prevArray[i], localArray[i], sizeof(double) * (right - left + 3));
+    for (int j = 0; j < right - left + 3; ++j) {
+      prevArray[i][j] = localArray[i][j];
+    }
   }
   vector<double> jVal(right - left + 1, 0);
   int iIdx, jIdx;
@@ -85,7 +88,32 @@ int main(int argc, char** argv) {
       squareSum += localArray[i][j] * localArray[i][j];
     }
   }
+  for (int i = 0; i < bot - top + 3; ++i) {
+    delete [] localArray[i];
+    delete [] prevArray[i];
+  }
+  delete [] localArray;
+  delete [] prevArray;
 
+  // Send result to processor 0
+  MPI_Request request;
+  if (rank != 0) {
+    MPI_Isend(&sum, 1, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD, &request);
+    MPI_Isend(&squareSum, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, &request);
+  }
+  else {
+    double totalSum = sum, totalSquareSum = squareSum;
+    MPI_Status status;
+    for (int i = 1; i < size; ++i) {
+      MPI_Recv(&sum, 1, MPI_DOUBLE, i, 2, MPI_COMM_WORLD, &status);
+      MPI_Recv(&squareSum, 1, MPI_DOUBLE, i , 1, MPI_COMM_WORLD, &status);
+      totalSum += sum;
+      totalSquareSum += squareSum;
+    }
+    cout << "Sum: " << totalSum << endl;
+    cout << "Square Sum: " << totalSquareSum << endl;
+  }
+  /*
   MPI_Request request;
   if (rank != 0) {
     MPI_Isend(&sum, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &request);
@@ -105,10 +133,10 @@ int main(int argc, char** argv) {
     }
     cout << val << endl;
   }
+  */
 
   MPI_Finalize();
-  endTime = MPI_Wtime();
-  if (rank == 0) cout << "Time: " << endTime - startTime << endl;
+  if (rank == 0) cout << "Time: " << MPI_Wtime() - startTime << endl;
   return 0;
 }
 
@@ -215,7 +243,10 @@ void update(int& rank, double **localArray, double **prevArray, const int& top, 
   int leftBorder = (left == 0) ? 2 : 1;
   int rightBorder = (right == n - 1) ? right - left : right - left + 1;
   for (int i = 0; i < bot - top + 3; ++i) {
-    memcpy(prevArray[i], localArray[i], sizeof(double) * (right - left + 3));
+    //memcpy(prevArray[i], localArray[i], sizeof(double) * (right - left + 3));
+    for (int j = 0; j < right - left + 3; ++j) {
+      prevArray[i][j] = localArray[i][j];
+    }
   }
   for (int i = topBorder - 1; i <= botBorder + 1; ++i) {
     for (int j = leftBorder - 1; j <= rightBorder + 1; ++j) {

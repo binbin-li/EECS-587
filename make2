@@ -1,0 +1,4 @@
+#!/bin/bash
+
+mpiCC -o test test2.cpp -O3
+#mpirun -np 1 ./test 1000 4000
