@@ -11,9 +11,12 @@
 #include <vector>
 using namespace std;
 
-double f(const double& x);
-void send(const int& bot, const int& top, const int& right, const int& left, const int& squareRowId, const int& squareColId, double **localArray, const int& width, const int& rank, const int& size);
-void receive(const int& bot, const int& top, const int& right, const int& left, const int& squareRowId, const int& squareColId, double **localArray, const int& width, const int& rank, const int& size);
+void f(double& x);
+void communicate(
+  const int& bot, const int& top, const int& right, const int& left,
+  const int& squareRowId, const int& squareColId, double **localArray,
+  const int& width, const int& rank, const int& size
+  );
 void update(int& rank, double **localArray, double **prevArray, const int& top, const int& bot, const int& left, const int& right, const int& m, const int& n);
 
 int main(int argc, char** argv) {
@@ -47,10 +50,7 @@ int main(int argc, char** argv) {
     for (int j = 0; j < right - left + 3; ++j) {
       localArray[i][j] = 0;
     }
-    // memcpy(prevArray[i], localArray[i], sizeof(double) * (right - left + 3));
-    for (int j = 0; j < right - left + 3; ++j) {
-      prevArray[i][j] = localArray[i][j];
-    }
+    memcpy(prevArray[i], localArray[i], sizeof(double) * (right - left + 3));
   }
   vector<double> jVal(right - left + 1, 0);
   int iIdx, jIdx;
@@ -71,13 +71,11 @@ int main(int argc, char** argv) {
 
   // Update in 10 iterations
   for (int iteration = 1; iteration <= 10; ++iteration) {
-    // Send to neighbors
-    send(bot, top, right, left, squareRowId, squareColId, localArray, width, rank, size);
-    // Receive from neighbors
-    receive(bot, top, right, left, squareRowId, squareColId, localArray, width, rank, size);
+    // Communicate with neighbors
+    communicate(bot, top, right, left, squareRowId, squareColId, localArray, width, rank, size);
     // Update the array
     update(rank, localArray, prevArray, top, bot, left, right, m, n);
-    MPI_Barrier(MPI_COMM_WORLD);
+    //MPI_Barrier(MPI_COMM_WORLD);
   }
 
   double sum = 0;
@@ -140,100 +138,56 @@ int main(int argc, char** argv) {
   return 0;
 }
 
-void send(const int& bot, const int& top, const int& right, const int& left, const int& squareRowId, const int& squareColId, double **localArray, const int& width, const int& rank, const int& size) {
-  MPI_Request request;
-  if (squareRowId == 0) {
-    // send to below
-    if (rank + width < size) {
-      MPI_Isend(localArray[bot - top + 1], right - left + 3, MPI_DOUBLE, rank + width, 0, MPI_COMM_WORLD, &request);
-    }
-  }
-  else if (squareRowId == width - 1) {
-    // send to upper
-    if (rank - width >= 0) {
-      MPI_Isend(localArray[1], right - left + 3, MPI_DOUBLE, rank - width, 0, MPI_COMM_WORLD, &request);
-    }
-  }
-  else {
-    // send to upper and below
-    MPI_Isend(localArray[bot - top + 1], right - left + 3, MPI_DOUBLE, rank + width, 0, MPI_COMM_WORLD, &request);
-    MPI_Isend(localArray[1], right - left + 3, MPI_DOUBLE, rank - width, 0, MPI_COMM_WORLD, &request);
-  }
-  if (squareColId == 0) {
-    // send to right
-    if (rank + 1 < size) {
-      double *rowVec = new double [bot - top + 3];
-      for (int i = 0; i < bot - top + 3; ++i) rowVec[i] = localArray[i][right - left + 1];
-      MPI_Isend(rowVec, bot - top + 3, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD, &request);
-      delete [] rowVec;
-    }
-  }
-  else if (squareColId == width - 1) {
-    // send to left
-    if (rank - 1 >= 0) {
-      double *rowVec = new double [bot - top + 3];
-      for (int i = 0; i < bot - top + 3; ++i) rowVec[i] = localArray[i][1];
-      MPI_Isend(rowVec, bot - top + 3, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, &request);
-      delete [] rowVec;
-    }
-  }
-  else {
-    // send to right and left
-    double *rowVec = new double [bot - top + 3];
-    for (int i = 0; i < bot - top + 3; ++i) rowVec[i] = localArray[i][1];
-    MPI_Isend(rowVec, bot - top + 3, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, &request);
-    for (int i = 0; i < bot - top + 3; ++i) rowVec[i] = localArray[i][right - left + 1];
-    MPI_Isend(rowVec, bot - top + 3, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD, &request);
-    delete [] rowVec;
-  }
-}
-
-void receive(const int& bot, const int& top, const int& right, const int& left, const int& squareRowId, const int& squareColId, double **localArray, const int& width, const int& rank, const int& size) {
+void communicate(
+  const int& bot, const int& top, const int& right, const int& left,
+  const int& squareRowId, const int& squareColId, double **localArray,
+  const int& width, const int& rank, const int& size
+  ) {
   MPI_Status status;
   int height = bot - top + 3, length = right - left + 3;
-  if (squareRowId == 0) {
-    // Receive from below
-    if (rank + width < size) {
-      MPI_Recv(localArray[height - 1], length, MPI_DOUBLE, rank + width, 0, MPI_COMM_WORLD, &status);
-    }
+  // Send to below except the last row
+  if (squareRowId != width - 1) {
+    MPI_Ssend(localArray[bot - top + 1], length, MPI_DOUBLE, rank + width, 0, MPI_COMM_WORLD);
   }
-  else if (squareRowId == width - 1) {
-    // Receive from upper
-    if (rank - width >= 0) {
-      MPI_Recv(localArray[0], length, MPI_DOUBLE, rank - width, 0, MPI_COMM_WORLD, &status);
-    }
+  // Recieve from upper except the first row
+  if (squareRowId != 0) {
+    MPI_Recv(localArray[0], length, MPI_DOUBLE, rank - width, 0, MPI_COMM_WORLD, &status);
   }
-  else {
-    // Receive from upper and below
-    MPI_Recv(localArray[bot - top + 2], right - left + 3, MPI_DOUBLE, rank + width, 0, MPI_COMM_WORLD, &status);
-    MPI_Recv(localArray[0], right - left + 3, MPI_DOUBLE, rank - width, 0, MPI_COMM_WORLD, &status);
+  // Send to upper except the first row
+  if (squareRowId != 0) {
+    MPI_Ssend(localArray[1], length, MPI_DOUBLE, rank - width, 0, MPI_COMM_WORLD);
   }
-  if (squareColId == 0) {
-    // Receive from right
-    if (rank + 1 < size) {
-      double *rowVec = new double [bot - top + 3];
-      MPI_Recv(rowVec, bot - top + 3, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD, &status);
-      for (int i = 0; i < bot - top + 3; ++i) localArray[i][right - left + 2] = rowVec[i];
-      delete [] rowVec;
-    }
+  // Receive from below except the last row
+  if (squareRowId != width - 1) {
+    MPI_Recv(localArray[height - 1], length, MPI_DOUBLE, rank + width, 0, MPI_COMM_WORLD, &status);
   }
-  else if (squareColId == width - 1) {
-    // Receive from left
-    if (rank - 1 >= 0) {
-      double *rowVec = new double [bot - top + 3];
-      MPI_Recv(rowVec, bot - top + 3, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, &status);
-      for (int i = 0; i < bot - top + 3; ++i) localArray[i][0] = rowVec[i];
-      delete [] rowVec;
-    }
+  // Send to right except the last column
+  if (squareColId != width - 1) {
+    double *rowVec = new double [height];
+    for (int i = 0; i < height; ++i) rowVec[i] = localArray[i][length - 2];
+    MPI_Ssend(rowVec, height, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD);
+    delete [] rowVec;
   }
-  else {
-    // Receive from right and left
-      double *rowVec = new double [bot - top + 3];
-      MPI_Recv(rowVec, bot - top + 3, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD, &status);
-      for (int i = 0; i < bot - top + 3; ++i) localArray[i][right - left + 2] = rowVec[i];
-      MPI_Recv(rowVec, bot - top + 3, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, &status);
-      for (int i = 0; i < bot - top + 3; ++i) localArray[i][0] = rowVec[i];
-      delete [] rowVec;
+  // Receive from the left except the first column
+  if (squareColId != 0) {
+    double *rowVec = new double [height];
+    MPI_Recv(rowVec, height, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, &status);
+    for (int i = 0; i < height; ++i) localArray[i][0] = rowVec[i];
+    delete [] rowVec;
+  }
+  // Send to left except the first column
+  if (squareColId != 0) {
+    double *rowVec = new double [height];
+    for (int i = 0; i < height; ++i) rowVec[i] = localArray[i][1];
+    MPI_Ssend(rowVec, height, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD);
+    delete [] rowVec;
+  }
+  // Receive from right except the last column
+  if (squareColId != width - 1) {
+    double *rowVec = new double [height];
+    MPI_Recv(rowVec, height, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD, &status);
+    for (int i = 0; i < height; ++i) localArray[i][length - 1] = rowVec[i];
+    delete [] rowVec;
   }
 }
 
@@ -243,14 +197,11 @@ void update(int& rank, double **localArray, double **prevArray, const int& top, 
   int leftBorder = (left == 0) ? 2 : 1;
   int rightBorder = (right == n - 1) ? right - left : right - left + 1;
   for (int i = 0; i < bot - top + 3; ++i) {
-    //memcpy(prevArray[i], localArray[i], sizeof(double) * (right - left + 3));
-    for (int j = 0; j < right - left + 3; ++j) {
-      prevArray[i][j] = localArray[i][j];
-    }
+    memcpy(prevArray[i], localArray[i], sizeof(double) * (right - left + 3));
   }
   for (int i = topBorder - 1; i <= botBorder + 1; ++i) {
     for (int j = leftBorder - 1; j <= rightBorder + 1; ++j) {
-      prevArray[i][j] = f(prevArray[i][j]);
+      f(prevArray[i][j]);
     }
   }
   for (int i = topBorder; i <= botBorder; ++i) {
@@ -261,7 +212,8 @@ void update(int& rank, double **localArray, double **prevArray, const int& top, 
   }
 }
 
-double f(const double& x) {
+
+void f(double& x) {
   double y = x;
   double divisor = x;
   int divider = 2;
@@ -270,5 +222,5 @@ double f(const double& x) {
     divider <<= 1;
     divisor += x;
   }
-  return y;
+  x = y;
 }
