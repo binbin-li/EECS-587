@@ -1,6 +1,6 @@
 /*************************************************************************
-	> File Name: test.c
-	> Author:
+	> File Name: test.cpp
+	> Author: Binbin Li
 	> Mail:
 	> Created Time: Sun 02 Oct 2016 03:20:27 PM EDT
  ************************************************************************/
@@ -11,7 +11,6 @@
 #include <vector>
 using namespace std;
 
-void f(double& x);
 void communicate(
   const int& bot, const int& top, const int& right, const int& left,
   const int& squareRowId, const int& squareColId, double **localArray,
@@ -92,17 +91,18 @@ int main(int argc, char** argv) {
   delete [] localArray;
   delete [] prevArray;
 
+  if (rank == 0) cout << "Time: " << MPI_Wtime() - startTime << endl;
   // Send result to processor 0
   if (rank != 0) {
     MPI_Request request;
-    MPI_Isend(&sum, 2, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD, &request);
+    MPI_Isend(&sum, 1, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD, &request);
     MPI_Isend(&squareSum, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, &request);
   }
   else {
     double totalSum = sum, totalSquareSum = squareSum;
     MPI_Status status;
     for (int i = 1; i < size; ++i) {
-      MPI_Recv(&sum, 2, MPI_DOUBLE, i, 2, MPI_COMM_WORLD, &status);
+      MPI_Recv(&sum, 1, MPI_DOUBLE, i, 2, MPI_COMM_WORLD, &status);
       MPI_Recv(&squareSum, 1, MPI_DOUBLE, i , 1, MPI_COMM_WORLD, &status);
       totalSum += sum;
       totalSquareSum += squareSum;
@@ -110,9 +110,9 @@ int main(int argc, char** argv) {
     cout << "Sum: " << totalSum << endl;
     cout << "Square Sum: " << totalSquareSum << endl;
   }
+  if (rank == 0) cout << "Time: " << MPI_Wtime() - startTime << endl;
 
   MPI_Finalize();
-  if (rank == 0) cout << "Time: " << MPI_Wtime() - startTime << endl;
   return 0;
 }
 
@@ -211,7 +211,15 @@ void update(
   }
   for (int i = topBorder - 1; i <= botBorder + 1; ++i) {
     for (int j = leftBorder - 1; j <= rightBorder + 1; ++j) {
-      f(prevArray[i][j]);
+      double x = prevArray[i][j];
+      double y = x, divisor = x;
+      int divider = 2;
+      for (int k = 1; k <= 10; ++k) {
+        y += sin(divisor) / divider;
+        divider <<= 1;
+        divisor += x;
+      }
+      prevArray[i][j] = y;
     }
   }
   for (int i = topBorder; i <= botBorder; ++i) {
@@ -222,15 +230,4 @@ void update(
   }
 }
 
-void f(double& x) {
-  double y = x;
-  double divisor = x;
-  int divider = 2;
-  for (int i = 1; i <= 10; ++i) {
-    y += sin(divisor) / divider;
-    divider <<= 1;
-    divisor += x;
-  }
-  x = y;
-}
 
