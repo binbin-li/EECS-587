@@ -15,14 +15,12 @@ void f(double& x);
 void communicate(
   const int& bot, const int& top, const int& right, const int& left,
   const int& squareRowId, const int& squareColId, double **localArray,
-  const int& width, const int& rank, const int& size
-  );
-void update(int& rank, double **localArray, double **prevArray, const int& top, const int& bot, const int& left, const int& right, const int& m, const int& n);
+  const int& width, const int& rank, const int& size);
+void update(int& rank, double **localArray, double **prevArray, const int& top,
+    const int& bot, const int& left, const int& right, const int& m, const int& n);
 
 int main(int argc, char** argv) {
   int rank, size;
-  double startTime, endTime;
-  startTime = MPI_Wtime();
   MPI_Init(0, 0);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -68,6 +66,7 @@ int main(int argc, char** argv) {
       }
     }
   }
+  double startTime = MPI_Wtime();
 
   // Update in 10 iterations
   for (int iteration = 1; iteration <= 10; ++iteration) {
@@ -94,16 +93,16 @@ int main(int argc, char** argv) {
   delete [] prevArray;
 
   // Send result to processor 0
-  MPI_Request request;
   if (rank != 0) {
-    MPI_Isend(&sum, 1, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD, &request);
+    MPI_Request request;
+    MPI_Isend(&sum, 2, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD, &request);
     MPI_Isend(&squareSum, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, &request);
   }
   else {
     double totalSum = sum, totalSquareSum = squareSum;
     MPI_Status status;
     for (int i = 1; i < size; ++i) {
-      MPI_Recv(&sum, 1, MPI_DOUBLE, i, 2, MPI_COMM_WORLD, &status);
+      MPI_Recv(&sum, 2, MPI_DOUBLE, i, 2, MPI_COMM_WORLD, &status);
       MPI_Recv(&squareSum, 1, MPI_DOUBLE, i , 1, MPI_COMM_WORLD, &status);
       totalSum += sum;
       totalSquareSum += squareSum;
@@ -111,27 +110,6 @@ int main(int argc, char** argv) {
     cout << "Sum: " << totalSum << endl;
     cout << "Square Sum: " << totalSquareSum << endl;
   }
-  /*
-  MPI_Request request;
-  if (rank != 0) {
-    MPI_Isend(&sum, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &request);
-    MPI_Isend(&squareSum, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &request);
-  }
-  else {
-    double *sums = new double [size];
-    //double *squareSums = new double [size];
-    sums[0] = sum;
-    MPI_Status status;
-    for (int i = 1; i < size; ++i) {
-      MPI_Recv(sums+i, 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status);
-    }
-    double val = 0;
-    for (int i = 0; i < size; ++i) {
-      val += sums[i];
-    }
-    cout << val << endl;
-  }
-  */
 
   MPI_Finalize();
   if (rank == 0) cout << "Time: " << MPI_Wtime() - startTime << endl;
@@ -141,57 +119,89 @@ int main(int argc, char** argv) {
 void communicate(
   const int& bot, const int& top, const int& right, const int& left,
   const int& squareRowId, const int& squareColId, double **localArray,
-  const int& width, const int& rank, const int& size
-  ) {
+  const int& width, const int& rank, const int& size) {
   MPI_Status status;
   int height = bot - top + 3, length = right - left + 3;
-  // Send to below except the last row
-  if (squareRowId != width - 1) {
+  // Send to below in the even row
+  if (squareRowId % 2 == 0 && rank + width < size) {
     MPI_Ssend(localArray[bot - top + 1], length, MPI_DOUBLE, rank + width, 0, MPI_COMM_WORLD);
   }
-  // Recieve from upper except the first row
-  if (squareRowId != 0) {
+  // Receive from upper in the odd row
+  if (squareRowId % 2 == 1) {
     MPI_Recv(localArray[0], length, MPI_DOUBLE, rank - width, 0, MPI_COMM_WORLD, &status);
   }
-  // Send to upper except the first row
-  if (squareRowId != 0) {
+  // Send to below in the odd row
+  if (squareRowId % 2 == 1 && squareRowId != width - 1) {
+    MPI_Ssend(localArray[bot - top + 1], length, MPI_DOUBLE, rank + width, 0, MPI_COMM_WORLD);
+  }
+  // Receive from upper in the even row
+  if (squareRowId % 2 == 0 && squareRowId != 0) {
+    MPI_Recv(localArray[0], length, MPI_DOUBLE, rank - width, 0, MPI_COMM_WORLD, &status);
+  }
+  // Send to upper in the even row
+  if (squareRowId % 2 == 0 && squareRowId != 0) {
     MPI_Ssend(localArray[1], length, MPI_DOUBLE, rank - width, 0, MPI_COMM_WORLD);
   }
-  // Receive from below except the last row
-  if (squareRowId != width - 1) {
+  // Receive from below in the odd row
+  if (squareRowId % 2 == 1 && squareRowId != width - 1) {
     MPI_Recv(localArray[height - 1], length, MPI_DOUBLE, rank + width, 0, MPI_COMM_WORLD, &status);
   }
-  // Send to right except the last column
-  if (squareColId != width - 1) {
-    double *rowVec = new double [height];
+  // Send to upper in the odd row
+  if (squareRowId % 2 == 1) {
+    MPI_Ssend(localArray[1], length, MPI_DOUBLE, rank - width, 0, MPI_COMM_WORLD);
+  }
+  // Receive from below in the even row
+  if (squareRowId % 2 == 0 && squareRowId != width - 1) {
+    MPI_Recv(localArray[height - 1], length, MPI_DOUBLE, rank + width, 0, MPI_COMM_WORLD, &status);
+  }
+
+  double *rowVec = new double [height];
+  // Send to right in the even column
+  if (squareColId % 2 == 0 && squareColId != width - 1) {
     for (int i = 0; i < height; ++i) rowVec[i] = localArray[i][length - 2];
     MPI_Ssend(rowVec, height, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD);
-    delete [] rowVec;
   }
-  // Receive from the left except the first column
-  if (squareColId != 0) {
-    double *rowVec = new double [height];
+  // Receive from left in the odd column
+  if (squareColId % 2 == 1) {
     MPI_Recv(rowVec, height, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, &status);
     for (int i = 0; i < height; ++i) localArray[i][0] = rowVec[i];
-    delete [] rowVec;
   }
-  // Send to left except the first column
-  if (squareColId != 0) {
-    double *rowVec = new double [height];
+  // Send to right in the odd column
+  if (squareColId % 2 == 1 && squareColId != width - 1) {
+    for (int i = 0; i < height; ++i) rowVec[i] = localArray[i][length - 2];
+    MPI_Ssend(rowVec, height, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD);
+  }
+  // Receive from left in the even column
+  if (squareColId % 2 == 0 && squareColId != 0) {
+    MPI_Recv(rowVec, height, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, &status);
+    for (int i = 0; i < height; ++i) localArray[i][0] = rowVec[i];
+  }
+  // Send to left in the even column
+  if (squareColId % 2 == 0 && squareColId != 0) {
     for (int i = 0; i < height; ++i) rowVec[i] = localArray[i][1];
     MPI_Ssend(rowVec, height, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD);
-    delete [] rowVec;
   }
-  // Receive from right except the last column
-  if (squareColId != width - 1) {
-    double *rowVec = new double [height];
+  // Receive from right in the odd column
+  if (squareColId % 2 == 1 && squareColId != width - 1) {
     MPI_Recv(rowVec, height, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD, &status);
     for (int i = 0; i < height; ++i) localArray[i][length - 1] = rowVec[i];
-    delete [] rowVec;
   }
+  // Send to left in the odd column
+  if (squareColId % 2 == 1) {
+    for (int i = 0; i < height; ++i) rowVec[i] = localArray[i][1];
+    MPI_Ssend(rowVec, height, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD);
+  }
+  // Receive from right in the even column
+  if (squareColId % 2 == 0 && squareColId != width - 1) {
+    MPI_Recv(rowVec, height, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD, &status);
+    for (int i = 0; i < height; ++i) localArray[i][length - 1] = rowVec[i];
+  }
+  delete [] rowVec;
 }
 
-void update(int& rank, double **localArray, double **prevArray, const int& top, const int& bot, const int& left, const int& right, const int& m, const int& n) {
+void update(
+  int& rank, double **localArray, double **prevArray, const int& top,
+  const int& bot, const int& left, const int& right, const int& m, const int& n) {
   int topBorder = (top == 0) ? 2 : 1;
   int botBorder = (bot == m - 1) ? bot - top : bot - top + 1;
   int leftBorder = (left == 0) ? 2 : 1;
@@ -206,12 +216,11 @@ void update(int& rank, double **localArray, double **prevArray, const int& top, 
   }
   for (int i = topBorder; i <= botBorder; ++i) {
     for (int j = leftBorder; j <= rightBorder; ++j) {
-      double z = (prevArray[i-1][j] + prevArray[i+1][j] + prevArray[i][j-1] + prevArray[i][j+1] + prevArray[i][j]) / 5.0;
+      double z = (prevArray[i-1][j] + prevArray[i][j-1] + prevArray[i][j] + prevArray[i][j+1] + prevArray[i+1][j]) / 5.0;
       localArray[i][j] = max(-100.0, min(100.0, z));
     }
   }
 }
-
 
 void f(double& x) {
   double y = x;
@@ -224,3 +233,4 @@ void f(double& x) {
   }
   x = y;
 }
+
