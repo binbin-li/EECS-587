@@ -17,15 +17,8 @@ mpirun -np 1 ./test 1000 4000
 mpirun -np 4 ./test 1000 4000
 mpirun -np 16 ./test 1000 4000
 mpirun -np 36 ./test 1000 4000
-mpirun -np 1 ./test 1000 4000
-mpirun -np 4 ./test 1000 4000
-mpirun -np 16 ./test 1000 4000
-mpirun -np 36 ./test 1000 4000
 
-mpirun -np 1 ./test 2000 500
-mpirun -np 4 ./test 2000 500
-mpirun -np 16 ./test 2000 500
-mpirun -np 36 ./test 2000 500
+
 mpirun -np 1 ./test 2000 500
 mpirun -np 4 ./test 2000 500
 mpirun -np 16 ./test 2000 500

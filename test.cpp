@@ -91,7 +91,6 @@ int main(int argc, char** argv) {
   delete [] localArray;
   delete [] prevArray;
 
-  if (rank == 0) cout << "Time: " << MPI_Wtime() - startTime << endl;
   // Send result to processor 0
   if (rank != 0) {
     MPI_Request request;
@@ -110,7 +109,7 @@ int main(int argc, char** argv) {
     cout << "Sum: " << totalSum << endl;
     cout << "Square Sum: " << totalSquareSum << endl;
   }
-  if (rank == 0) cout << "Time: " << MPI_Wtime() - startTime << endl;
+  if (rank == 0) cout << "Time: " << MPI_Wtime() - startTime << endl << endl;;
 
   MPI_Finalize();
   return 0;
@@ -212,12 +211,9 @@ void update(
   for (int i = topBorder - 1; i <= botBorder + 1; ++i) {
     for (int j = leftBorder - 1; j <= rightBorder + 1; ++j) {
       double x = prevArray[i][j];
-      double y = x, divisor = x;
-      int divider = 2;
+      double y = x;
       for (int k = 1; k <= 10; ++k) {
-        y += sin(divisor) / divider;
-        divider <<= 1;
-        divisor += x;
+        y += sin(x * k) / pow(2.0, k);
       }
       prevArray[i][j] = y;
     }
